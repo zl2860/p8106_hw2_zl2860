@@ -72,7 +72,7 @@ fit_lasso = glmnet(x ,
 
 cv.fit.lasso = cv.glmnet(x,y, type.measure = "mse", alpha = 1, lambda = exp(seq(-10,-2,length= 100)))
 plot(cv.fit.lasso)
-best.lambda = cv.fit$lambda.min
+best.lambda = cv.fit.lasso$lambda.min
 
 test_x = model.matrix(Solubility ~. , test)[,-1]
 pred_test_lasso = predict(fit_lasso, s = best.lambda,newx = test_x)
