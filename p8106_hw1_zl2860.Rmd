@@ -1,8 +1,8 @@
 ---
-title: "p8160_hw1_zl2860"
+title: "p8106_hw1_zl2860"
 author: "Zongchao Liu"
 date: "2/16/2020"
-output: github_document
+output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
@@ -13,47 +13,58 @@ library(caret)
 library(ModelMetrics) 
 ```
 
-# load data
-```{r}
+# Load data
+
+```{r, message=FALSE}
 set.seed(886)
 train = read_csv("./solubility_train.csv")
 test = read_csv("./solubility_test.csv")
-train_x = model.matrix(Solubility ~ . , train)[,-ncol(train)]
+
+train_x = model.matrix(Solubility ~ . , train)[,-1]
 train_y = train$Solubility
-test_x = model.matrix(Solubility ~ . , test)[,-ncol(test)]
+test_x = model.matrix(Solubility ~ . , test)[,-1]
 test_y = test$Solubility
 ```
 
-# 1. ls regression
+# 1. LS regression
 
-```{r}
+```{r, warning=FALSE}
+set.seed(886)
 ctrl1  = trainControl(method = "repeatedcv", number = 10, repeats = 5)
 lm.fit = train(train_x, 
                train_y,
                method = "lm",
                trControl = ctrl1)
 
-pred_test_fit = predict(lm.fit,newx = test_x)
-mse(test_y,pred_test_fit)
+pred_test_lm = predict(lm.fit, test_x)
+mse(test_y,pred_test_lm)
+
 
 ```
 
-#2. ridge
+The mean square error of least square linear regression on the test data is 0.5558898.
+
+# 2. ridge
 
 ```{r} 
+set.seed(886)
 ridge.fit = train(x = train_x,
                   y = train_y,
                   method = "glmnet",
                   tuneGrid = expand.grid(alpha = 0,
-                                         lambda = exp(seq(-10,5,length = 100))),
+                                         lambda = exp(seq(-15,5,length = 100))),
+                  preProc = c("center","scale"),
                   trControl = ctrl1)
 
+ridge.fit$bestTune #lambda
 plot(ridge.fit,xTrans = function(x) log(x))
-
-
+pred_test_ridge = predict(ridge.fit, test_x)
+mse(test_y,pred_test_ridge)
 ```
 
-# 3 . lasso
+The mean square error of ridge regression on the test data is 0.5134603. The chosen lambda by cross-validation is 0.1260966.
+
+# 3. Lasso
 
 ```{r}
 set.seed(886)
@@ -64,40 +75,48 @@ lasso.fit = train(train_x,
                                          lambda = exp(seq(-6,-4,length = 200))),
                   preProc = c("center","scale"),
                   trControl = ctrl1)
-log(0.0006)
+
 
 lasso.fit$bestTune
 
 plot(lasso.fit, xTrans = function(x) log(x))
 
 coef = coef(lasso.fit$finalModel,lasso.fit$bestTune$lambda)
+length(which(coef!=0)) # number of non-zero coefficient estimates
+pred_test_lasso = predict(lasso.fit,test_x)
+mse(test_y,pred_test_lasso)
 ```
+
+The mean square error of lasso regression on the test data is 0.4957342. The chosen lambda by cross-validation is 0.005267333. The final model using lasso regression has 143 non-zero coefficients and 1 intercept.
 
 # d. pcr
 
 ```{r}
 set.seed(886)
-pcr.fit <- train(x = train_x, 
+pcr.fit = train(x = train_x, 
                  y = train_y,
                  method = "pcr",
-                 tuneLength = 200,
+                 tuneGrid = data.frame(ncomp = 1:226),
+                 tuneLength = length(train),
                  trControl = ctrl1,
                  preProc = c("center", "scale"))
 
-trans <- preProcess(train_x, method = c("center", "scale"))
+pred_test_pcr = predict(pcr.fit,test_x)
 
-predy2.pcr2 <- predict(pcr.fit$finalModel, newdata = predict(trans, test_x),ncomp = pcr.fit$bestTune$ncomp)
+pcr.fit$bestTune # M=148
 
-
-mse(test_y, predy2.pcr2)
+mse(test_y, pred_test_pcr)
 
 ggplot(pcr.fit, highlight = T) + theme_bw()
 
-
 ```
 
-#
+The test error by using crossvalidation is 0.5410365. The value of M selected by cross-validation is 148.
+
+# e. briefly discuss the results obtained in a ~ d
+
 ```{r}
+set.seed(886)
 resamp = resamples(list(lasso = lasso.fit,
                         ridge = ridge.fit,
                         pcr = pcr.fit,
@@ -108,3 +127,9 @@ parallelplot(resamp,metric = "RMSE")
 bwplot(resamp, metric = "RMSE")
 ```
 
+
+Under the same scenario of cross-validation, by comparing the MSE of each model, we can see that $MSE_{LS} > MSE_{PCR} > MSE_{Ridge} > MSE_{LASSO}$. The LS regression includes all of the predictors to predict the outcome. The ridge and lasso regression model do not use all of the original predictors and instead conduct a feature selection process. For the ridge regression model, the best lambda is 0.1198862. For the lasso regression model, the best lambda is 0.005267333. The principle component model is an unspuervised method to reduce the high dimensions of the data. There is no sample covariance betweendifferent components over the dataset. For the principle component regression model, 148 components are used, which capture 88.02% of the information(variance) of the data.
+
+# f. Which model will you choose or predicting solubility?
+
+Based on the resampling results, we can see that lasso regression relatively has the lowest test RMSE. Therefore, for predicting solubility, using lasso regression may be the best choice.
